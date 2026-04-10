@@ -99,14 +99,17 @@ class ScreenRecordingService : Service() {
 
     private fun handleStart(intent: Intent) {
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
-        val dataIntent = intent.getParcelableExtra<Intent>(EXTRA_DATA_INTENT)
+        val dataIntent = intent.getParcelableExtra<Intent>(EXTRA_DATA_INTENT) ?: return
         val audioSource = intent.getStringExtra(EXTRA_AUDIO_SOURCE) ?: AUDIO_SOURCE_MIC
 
-        val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val mediaProj = projectionManager.getMediaProjection(resultCode, dataIntent ?: return)
-        mediaProjection = mediaProj
-
         try {
+            // On Android 14+, must call startForeground BEFORE getMediaProjection
+            startForegroundNotification()
+
+            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            val mediaProj = projectionManager.getMediaProjection(resultCode, dataIntent)
+            mediaProjection = mediaProj
+
             setupMediaRecorder(audioSource)
             mediaRecorder?.prepare()
             mediaRecorder?.start()
@@ -132,11 +135,12 @@ class ScreenRecordingService : Service() {
             _recordingState.value = RecordingState.Recording(
                 startTime = recordingStartTime
             )
-
-            startForegroundNotification()
         } catch (e: Exception) {
             _recordingState.value = RecordingState.Error(e.message ?: "Failed to start recording")
             cleanup()
+            try {
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            } catch (_: Exception) {}
             stopSelf()
         }
     }
