@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity() {
 fun ZrecApp(
     viewModel: RecordingViewModel = viewModel()
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val navController = rememberNavController()
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
@@ -102,7 +103,7 @@ fun ZrecApp(
         val allGranted = permissions.values.all { it }
         if (!allGranted) {
             Toast.makeText(
-                androidx.compose.ui.platform.LocalContext.current,
+                context,
                 "Some permissions were denied",
                 Toast.LENGTH_LONG
             ).show()
@@ -122,7 +123,7 @@ fun ZrecApp(
     LaunchedEffect(errorMessage) {
         if (errorMessage != null) {
             Toast.makeText(
-                androidx.compose.ui.platform.LocalContext.current,
+                context,
                 errorMessage,
                 Toast.LENGTH_LONG
             ).show()
@@ -132,7 +133,7 @@ fun ZrecApp(
 
     // Request permissions on first launch
     LaunchedEffect(Unit) {
-        if (!PermissionHelper.hasAllPermissions(androidx.compose.ui.platform.LocalContext.current)) {
+        if (!PermissionHelper.hasAllPermissions(context)) {
             permissionLauncher.launch(PermissionHelper.getRequiredPermissions())
         }
     }
