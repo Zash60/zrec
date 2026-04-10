@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="zrec_dark">#201d1d</color>
+    <color name="zrec_light">#fdfcfc</color>
+    <color name="zrec_mid_gray">#9a9898</color>
+    <color name="zrec_dark_surface">#302c2c</color>
+    <color name="zrec_light_surface">#f1eeee</color>
+    <color name="zrec_accent_blue">#007aff</color>
+    <color name="zrec_danger_red">#ff3b30</color>
+    <color name="zrec_success_green">#30d158</color>
+    <color name="zrec_warning_orange">#ff9f0a</color>
+    <color name="zrec_border">#646262</color>
+</resources>

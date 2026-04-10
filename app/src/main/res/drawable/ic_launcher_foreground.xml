@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Recording circle -->
+    <path
+        android:fillColor="#fdfcfc"
+        android:pathData="M54,38c8.84,0 16,7.16 16,16s-7.16,16 -16,16 -16,-7.16 -16,-16 7.16,-16 16,-16z" />
+    <!-- "Z" letter suggestion -->
+    <path
+        android:fillColor="#201d1d"
+        android:pathData="M54,46c4.42,0 8,3.58 8,8s-3.58,8 -8,8 -8,-3.58 -8,-8 3.58,-8 8,-8z" />
+</vector>
