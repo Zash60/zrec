@@ -28,6 +28,7 @@ import com.zash60.zrec.ui.screens.list.RecordingsScreen
 import com.zash60.zrec.ui.screens.player.VideoPlayerScreen
 import com.zash60.zrec.ui.theme.ZrecTheme
 import com.zash60.zrec.util.PermissionHelper
+import com.zash60.zrec.viewmodel.RecordingViewModel
 import com.zash60.zrec.viewmodel.Screen
 
 /**

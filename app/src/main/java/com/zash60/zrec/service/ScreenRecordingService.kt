@@ -18,7 +18,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.zash60.zrec.MainActivity
 import com.zash60.zrec.R
-import com.zash60.zrec.util.RecordingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -439,6 +438,14 @@ sealed interface RecordingState {
     data class Paused(
         val startTime: Long,
         val pausedDuration: Long = 0L,
-    ) : RecordingState
+    ) : RecordingState {
+        /**
+         * Returns the effective elapsed recording time in milliseconds,
+         * excluding any paused duration.
+         */
+        fun elapsedMs(currentTime: Long = System.currentTimeMillis()): Long {
+            return (currentTime - startTime - pausedDuration).coerceAtLeast(0)
+        }
+    }
     data class Error(val message: String) : RecordingState
 }
