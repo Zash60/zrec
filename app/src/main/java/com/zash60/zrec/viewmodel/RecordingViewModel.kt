@@ -2,7 +2,6 @@ package com.zash60.zrec.viewmodel
 
 import android.app.Application
 import android.content.Intent
-import android.media.projection.MediaProjectionManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zash60.zrec.data.model.VideoFile
@@ -10,19 +9,13 @@ import com.zash60.zrec.data.repository.VideoRepository
 import com.zash60.zrec.service.ScreenRecordingService
 import com.zash60.zrec.service.ScreenRecordingService.Companion.ACTION_PAUSE
 import com.zash60.zrec.service.ScreenRecordingService.Companion.ACTION_RESUME
-import com.zash60.zrec.service.ScreenRecordingService.Companion.ACTION_START
 import com.zash60.zrec.service.ScreenRecordingService.Companion.ACTION_STOP
-import com.zash60.zrec.service.ScreenRecordingService.Companion.EXTRA_AUDIO_SOURCE
-import com.zash60.zrec.service.ScreenRecordingService.Companion.EXTRA_DATA_INTENT
-import com.zash60.zrec.service.ScreenRecordingService.Companion.EXTRA_RESULT_CODE
 import com.zash60.zrec.service.RecordingState
-import com.zash60.zrec.util.PermissionHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 
 /**
  * ViewModel that manages screen recording state and video listing.
@@ -57,29 +50,6 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     // Error message for one-time display
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
-
-    /**
-     * Starts screen recording with the given MediaProjection result.
-     */
-    fun startRecording(resultCode: Int, data: Intent) {
-        if (!PermissionHelper.hasAudioPermission(context)) {
-            _errorMessage.value = "Audio permission is required for recording"
-            return
-        }
-
-        val serviceIntent = Intent(context, ScreenRecordingService::class.java).apply {
-            action = ACTION_START
-            putExtra(EXTRA_RESULT_CODE, resultCode)
-            putExtra(EXTRA_DATA_INTENT, data)
-            putExtra(EXTRA_AUDIO_SOURCE, _audioSource.value)
-        }
-
-        try {
-            context.startForegroundService(serviceIntent)
-        } catch (e: Exception) {
-            _errorMessage.value = "Failed to start recording: ${e.message}"
-        }
-    }
 
     /**
      * Pauses the current recording.
@@ -145,17 +115,6 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
      */
     fun clearError() {
         _errorMessage.value = null
-    }
-
-    /**
-     * Requests MediaProjection permission.
-     * Returns an Intent to be launched with startActivityResult.
-     */
-    fun createScreenCaptureIntent(): Intent {
-        val projectionManager = context.getSystemService(
-            MediaProjectionManager::class.java
-        )
-        return projectionManager.createScreenCaptureIntent()
     }
 }
 

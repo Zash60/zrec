@@ -12,10 +12,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.launch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -42,7 +45,6 @@ class MainActivity : ComponentActivity() {
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            // We don't use binding directly; state is observed via StateFlow
             serviceBound = true
         }
 
@@ -52,20 +54,68 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // MediaProjection result handling
+    private var pendingAudioSource: String? = null
+
+    private val mediaProjectionLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK) {
+                val audioSource = pendingAudioSource
+                    ?: com.zash60.zrec.service.ScreenRecordingService.AUDIO_SOURCE_MIC
+                val intent = Intent(this, ScreenRecordingService::class.java).apply {
+                    action = com.zash60.zrec.service.ScreenRecordingService.ACTION_START
+                    putExtra(
+                        com.zash60.zrec.service.ScreenRecordingService.EXTRA_RESULT_CODE,
+                        result.resultCode
+                    )
+                    putExtra(
+                        com.zash60.zrec.service.ScreenRecordingService.EXTRA_DATA_INTENT,
+                        result.data
+                    )
+                    putExtra(
+                        com.zash60.zrec.service.ScreenRecordingService.EXTRA_AUDIO_SOURCE,
+                        audioSource
+                    )
+                }
+                try {
+                    startForegroundService(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Failed to start: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+    /**
+     * Launches the MediaProjection permission dialog.
+     * Called from Compose UI.
+     */
+    fun startRecordingFlow(audioSource: String) {
+        pendingAudioSource = audioSource
+        try {
+            val projectionManager = getSystemService(MEDIA_PROJECTION_SERVICE)
+                    as android.media.projection.MediaProjectionManager
+            val intent = projectionManager.createScreenCaptureIntent()
+            mediaProjectionLauncher.launch(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Screen capture not supported: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         setContent {
             ZrecTheme {
-                ZrecApp()
+                ZrecApp(
+                    onStartRecording = { audioSource -> startRecordingFlow(audioSource) }
+                )
             }
         }
     }
 
     override fun onResume() {
         super.onResume()
-        // Bind to service if running
         try {
             val intent = Intent(this, ScreenRecordingService::class.java)
             bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
@@ -89,9 +139,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun ZrecApp(
-    viewModel: RecordingViewModel = viewModel()
+    viewModel: RecordingViewModel = viewModel(),
+    onStartRecording: (String) -> Unit,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val navController = rememberNavController()
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
@@ -103,19 +153,10 @@ fun ZrecApp(
         val allGranted = permissions.values.all { it }
         if (!allGranted) {
             Toast.makeText(
-                context,
+                androidx.compose.ui.platform.LocalContext.current,
                 "Some permissions were denied",
                 Toast.LENGTH_LONG
             ).show()
-        }
-    }
-
-    // MediaProjection launcher
-    val mediaProjectionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            viewModel.startRecording(result.resultCode, result.data ?: return@rememberLauncherForActivityResult)
         }
     }
 
@@ -123,7 +164,7 @@ fun ZrecApp(
     LaunchedEffect(errorMessage) {
         if (errorMessage != null) {
             Toast.makeText(
-                context,
+                androidx.compose.ui.platform.LocalContext.current,
                 errorMessage,
                 Toast.LENGTH_LONG
             ).show()
@@ -133,6 +174,7 @@ fun ZrecApp(
 
     // Request permissions on first launch
     LaunchedEffect(Unit) {
+        val context = androidx.compose.ui.platform.LocalContext.current
         if (!PermissionHelper.hasAllPermissions(context)) {
             permissionLauncher.launch(PermissionHelper.getRequiredPermissions())
         }
@@ -149,9 +191,8 @@ fun ZrecApp(
                 onNavigateToRecordings = {
                     navController.navigate("recordings")
                 },
-                onRequestRecordingPermission = {
-                    val intent = viewModel.createScreenCaptureIntent()
-                    mediaProjectionLauncher.launch(intent)
+                onStartRecording = { audioSource ->
+                    onStartRecording(audioSource)
                 }
             )
         }

@@ -49,7 +49,7 @@ import kotlinx.coroutines.delay
 fun HomeScreen(
     viewModel: RecordingViewModel,
     onNavigateToRecordings: () -> Unit,
-    onRequestRecordingPermission: () -> Unit,
+    onStartRecording: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val recordingState by viewModel.recordingState.collectAsStateWithLifecycle()
@@ -138,7 +138,7 @@ fun HomeScreen(
                         // Show record button and audio selector
                         RecordButton(
                             isRecording = false,
-                            onClick = onRequestRecordingPermission,
+                            onClick = { onStartRecording(audioSource) },
                         )
 
                         Spacer(modifier = Modifier.padding(vertical = ZrecSpacing.Spacing16))
