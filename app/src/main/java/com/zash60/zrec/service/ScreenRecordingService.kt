@@ -13,6 +13,7 @@ import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Environment
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -97,6 +98,9 @@ class ScreenRecordingService : Service() {
 
     // ---- Start Recording ----
 
+    // Temp file for recording (copied to MediaStore on stop)
+    private var tempOutputFile: java.io.File? = null
+
     private fun handleStart(intent: Intent) {
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
         val dataIntent = intent.getParcelableExtra<Intent>(EXTRA_DATA_INTENT) ?: return
@@ -110,7 +114,8 @@ class ScreenRecordingService : Service() {
             val mediaProj = projectionManager.getMediaProjection(resultCode, dataIntent)
             mediaProjection = mediaProj
 
-            setupMediaRecorder(audioSource)
+            tempOutputFile = createTempOutputFile()
+            setupMediaRecorder(audioSource, tempOutputFile!!)
             mediaRecorder?.prepare()
             mediaRecorder?.start()
 
@@ -145,10 +150,22 @@ class ScreenRecordingService : Service() {
         }
     }
 
-    private fun setupMediaRecorder(audioSource: String) {
+    /**
+     * Creates a temp file for recording output.
+     */
+    private fun createTempOutputFile(): java.io.File {
         val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
         val fileName = "Zrec_${dateFormat.format(Date())}.mp4"
 
+        // Use app-specific external storage (no permission needed)
+        val dir = getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+            ?: throw IllegalStateException("Cannot access external files directory")
+
+        val zrecDir = java.io.File(dir, "Zrec").apply { mkdirs() }
+        return java.io.File(zrecDir, fileName)
+    }
+
+    private fun setupMediaRecorder(audioSource: String, outputFile: java.io.File) {
         mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             MediaRecorder(this)
         } else {
@@ -165,12 +182,11 @@ class ScreenRecordingService : Service() {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         setAudioSource(MediaRecorder.AudioSource.REMOTE_SUBMIX)
                     } else {
-                        // Fallback to MIC for older devices
                         setAudioSource(MediaRecorder.AudioSource.MIC)
                     }
                 }
                 AUDIO_SOURCE_NONE -> {
-                    // No audio source set
+                    // No audio source
                 }
             }
 
@@ -188,26 +204,8 @@ class ScreenRecordingService : Service() {
             setVideoEncodingBitRate(8_000_000)
             setOrientationHint(0)
 
-            // Save to Movies/Zrec
-            val contentValues = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, fileName)
-                put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/Zrec")
-                put(android.provider.MediaStore.Video.Media.IS_PENDING, 1)
-            }
-
-            val resolver = contentResolver
-            val uri = resolver.insert(
-                android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                contentValues
-            )
-
-            uri?.let {
-                val descriptor = resolver.openFileDescriptor(it, "rw")
-                descriptor?.use { fd ->
-                    setOutputFile(fd.fileDescriptor)
-                }
-            }
+            // Write directly to temp file path
+            setOutputFile(outputFile.absolutePath)
         }
     }
 
@@ -267,55 +265,57 @@ class ScreenRecordingService : Service() {
     }
 
     private fun stopRecording() {
+        val file = tempOutputFile
         try {
             mediaRecorder?.stop()
-
-            // Mark video as no longer pending
-            val contentValues = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.Video.Media.IS_PENDING, 0)
-            }
-            // The URI is managed by MediaRecorder; this is handled automatically
-
-            // Finalize the IS_PENDING flag for the last inserted video
-            finalizeLastVideo()
+            mediaRecorder?.release()
         } catch (e: Exception) {
             // Ignore errors during stop (e.g., if recording was very short)
         }
-    }
 
-    private fun finalizeLastVideo() {
-        // Query for the most recent Zrec video and mark it as not pending
-        val projection = arrayOf(
-            android.provider.MediaStore.Video.Media._ID,
-            android.provider.MediaStore.Video.Media.IS_PENDING
-        )
-        val selection = "${android.provider.MediaStore.Video.Media.RELATIVE_PATH} LIKE ?"
-        val selectionArgs = arrayOf("%Zrec%")
-        val sortOrder = "${android.provider.MediaStore.Video.Media.DATE_TAKEN} DESC"
-
-        val cursor = contentResolver.query(
-            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            sortOrder
-        )
-
-        cursor?.use {
-            if (it.moveToFirst()) {
-                val idColumn = it.getColumnIndexOrThrow(android.provider.MediaStore.Video.Media._ID)
-                val id = it.getLong(idColumn)
-                val uri = android.content.ContentUris.withAppendedId(
-                    android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id
-                )
-                val values = android.content.ContentValues().apply {
-                    put(android.provider.MediaStore.Video.Media.IS_PENDING, 0)
-                }
-                contentResolver.update(uri, values, null, null)
-            }
+        if (file != null && file.exists()) {
+            saveToMediaStore(file)
         }
     }
 
+    /**
+     * Copies a temp recording file to MediaStore's Movies/Zrec directory.
+     */
+    private fun saveToMediaStore(file: java.io.File) {
+        val contentValues = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, file.name)
+            put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/Zrec")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(android.provider.MediaStore.Video.Media.IS_PENDING, 1)
+            }
+        }
+
+        val uri = contentResolver.insert(
+            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            contentValues
+        )
+
+        uri?.let {
+            try {
+                contentResolver.openOutputStream(it)?.use { outputStream ->
+                    file.inputStream().use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+                // Mark as no longer pending
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val updateValues = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.Video.Media.IS_PENDING, 0)
+                    }
+                    contentResolver.update(it, updateValues, null, null)
+                }
+            } catch (e: Exception) {
+                // If copy fails, delete the pending entry
+                contentResolver.delete(it, null, null)
+            }
+        }
+    }
     // ---- Notification ----
 
     private fun createNotificationChannel() {
@@ -419,6 +419,14 @@ class ScreenRecordingService : Service() {
             // Ignore
         }
         mediaRecorder = null
+
+        // Clean up temp file if it still exists (e.g., on error)
+        tempOutputFile?.let { file ->
+            if (file.exists()) {
+                file.delete()
+            }
+            tempOutputFile = null
+        }
     }
 }
 
